@@ -70,6 +70,8 @@ import {
 } from './commandRunner';
 import { CodeQlStatusBarHandler } from './status-bar';
 
+import { Credentials } from './authentication';
+
 /**
  * extension.ts
  * ------------
@@ -148,7 +150,7 @@ export interface CodeQLExtensionInterface {
  *
  * @returns CodeQLExtensionInterface
  */
-export async function activate(ctx: ExtensionContext): Promise<CodeQLExtensionInterface | {}> {
+export async function activate(ctx: ExtensionContext): Promise<CodeQLExtensionInterface | Record<string, never>> {
   logger.log(`Starting ${extensionId} extension`);
   if (extension === undefined) {
     throw new Error(`Can't find extension ${extensionId}`);
@@ -294,13 +296,13 @@ export async function activate(ctx: ExtensionContext): Promise<CodeQLExtensionIn
 
   async function installOrUpdateThenTryActivate(
     config: DistributionUpdateConfig
-  ): Promise<CodeQLExtensionInterface | {}> {
+  ): Promise<CodeQLExtensionInterface | Record<string, never>> {
 
     await installOrUpdateDistribution(config);
 
     // Display the warnings even if the extension has already activated.
     const distributionResult = await getDistributionDisplayingDistributionWarnings();
-    let extensionInterface: CodeQLExtensionInterface | {} = {};
+    let extensionInterface: CodeQLExtensionInterface | Record<string, never> = {};
     if (!beganMainExtensionActivation && distributionResult.kind !== FindDistributionResultKind.NoDistribution) {
       extensionInterface = await activateWithInstalledDistribution(
         ctx,
@@ -494,8 +496,7 @@ async function activateWithInstalledDistribution(
         helpers.showAndLogErrorMessage(
           'Jumping from a .qlref file to the .ql file it references is not '
           + 'supported with the CLI version you are running.\n'
-          + `Please upgrade your CLI to version ${
-          CliVersionConstraint.CLI_VERSION_WITH_RESOLVE_QLREF
+          + `Please upgrade your CLI to version ${CliVersionConstraint.CLI_VERSION_WITH_RESOLVE_QLREF
           } or later to use this feature.`);
       }
     }
@@ -709,6 +710,18 @@ async function activateWithInstalledDistribution(
       helpers.showAndLogInformationMessage(text);
     }));
 
+  /**
+   * Credentials for authenticating to GitHub.
+   * Currently unused, but will be useful in the future when making API calls.
+   */
+  const credentials = await Credentials.initialize(ctx);
+
+  ctx.subscriptions.push(
+    commandRunner('codeQL.authenticateToGitHub', async () => {
+      const octokit = await credentials.getOctokit();
+      const userInfo = await octokit.users.getAuthenticated();
+      helpers.showAndLogInformationMessage(`Authenticated to GitHub as user: ${userInfo.data.login}`);
+    }));
 
   logger.log('Starting language server.');
   ctx.subscriptions.push(client.start());
